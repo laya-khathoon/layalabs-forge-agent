@@ -1,0 +1,109 @@
+{
+  "name": "layalabs-forge-agent",
+  "displayName": "Layalabs Forge Agent",
+  "description": "A VS Code coding agent whose agent loop runs on TrueForge, TrueFoundry's open-source agent harness.",
+  "version": "0.1.0",
+  "publisher": "layalabs",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "forge",
+          "title": "Forge Agent",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "forge": [
+        {
+          "id": "forge.agentView",
+          "name": "Agent",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "forge.inlineEdit",
+        "title": "Forge: Inline Edit Selection"
+      },
+      {
+        "command": "forge.openAgent",
+        "title": "Forge: Focus Agent Panel"
+      },
+      {
+        "command": "forge.undoLastApply",
+        "title": "Forge: Undo Last Applied Change"
+      },
+      {
+        "command": "forge.newSession",
+        "title": "Forge: Start New Session"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "forge.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Forge Agent",
+      "properties": {
+        "forge.trueforgeBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "Base URL of the local TrueForge server."
+        },
+        "forge.model": {
+          "type": "string",
+          "default": "google/gemini-2.5-flash",
+          "description": "Model to use, exactly as configured in TrueForge Settings -> Models."
+        },
+        "forge.fallbackModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional second model used automatically when the primary fails (e.g. ollama/llama3.2). Leave empty to disable."
+        },
+        "forge.mcpServerName": {
+          "type": "string",
+          "default": "vscode-tools",
+          "description": "Name of the MCP server (configured in TrueForge Settings -> Connectors) that exposes the editor tools."
+        },
+        "forge.contextBudgetTokens": {
+          "type": "number",
+          "default": 12000,
+          "description": "Approximate token budget for automatically retrieved context."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "tsc -p ./"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@truefoundry/trueforge-sdk": "^0.185.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.9.3"
+  }
+}

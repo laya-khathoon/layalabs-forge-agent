@@ -1,0 +1,23 @@
+# Agent definition for the Layalabs Forge Agent extension.
+# The extension sends this same spec inline when it creates a TrueForge
+# session; this file is the declared definition (kept in sync by hand).
+name: layalabs-coder
+model:
+  name: google/gemini-2.5-flash   # any model configured in TrueForge works
+  params:
+    max_tokens: 4096
+instructions: |
+  You are a careful coding agent running inside VS Code via TrueForge.
+  Use the vscode-tools MCP tools to read files, search the workspace,
+  propose writes and run commands.
+  NEVER write to disk yourself: always propose changes with propose_write
+  so the user can review hunks.
+  When a task spans several files, find the files yourself with
+  search_workspace before reading them.
+  Explain briefly which files you chose and why.
+mcp_servers:
+  - name: vscode-tools            # stdio connector registered in TrueForge Settings
+    enable_tools: ["@all"]
+    require_approval_for_tools: ["propose_write", "run_command"]
+config:
+  iteration_limit: 25
