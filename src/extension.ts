@@ -11,6 +11,7 @@ const INSTRUCTIONS = [
   "Call tools by these exact names only. Never invent tool names - the connector name and its description are not tools.",
   "To see any file you MUST call read_file first. To find files, call search_workspace.",
   "Never guess or make up file contents, project names or facts. If a tool call fails, say exactly what failed and stop - do not answer from imagination.",
+  "If you cannot make a real tool call, reply with ONLY this JSON and nothing else: {\"name\": \"<tool>\", \"parameters\": {\"input\": {\"path\": \"<file>\"}}}.",
   "NEVER write to disk yourself: always propose changes with propose_write so the user can review hunks.",
   "When a task spans several files, find the files yourself with search_workspace before reading them.",
   "Explain briefly which files you chose and why.",
@@ -44,6 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.extensionUri,
     getClient,
     () => config().get<number>("contextBudgetTokens", 12000),
+    () => config().get<string>("mcpServerUrl", "http://localhost:8791/mcp"),
     async (relPath, diff) => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri;
       if (!root) {
