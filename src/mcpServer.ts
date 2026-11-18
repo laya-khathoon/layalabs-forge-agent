@@ -2,13 +2,20 @@
  * MCP server exposing the editor's capabilities to the TrueForge agent:
  * read_file, search_workspace, propose_write and run_command.
  *
- * TrueForge spawns this process over stdio (configured in Settings ->
- * Connectors). The agent - not the extension - decides what to read and
- * change. propose_write never touches disk: it returns a unified diff,
+ * Two transports:
+ *   node out/mcpServer.js               stdio (TrueForge spawns the process)
+ *   node out/mcpServer.js --http 8791   streamable HTTP at http://localhost:8791/mcp
+ * (TrueForge standalone's Settings -> Connectors form takes a remote URL,
+ * so the HTTP mode is the one that works there; register it with auth None.)
+ *
+ * The agent - not the extension - decides what to read and change.
+ * propose_write never touches disk: it returns a unified diff,
  * and the user reviews the hunks in the editor before anything is applied.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer, IncomingMessage, ServerResponse } from "http";
 import { z } from "zod";
 import * as fs from "fs";
 import * as path from "path";
@@ -31,6 +38,7 @@ function textResult(text: string) {
   return { content: [{ type: "text" as const, text }] };
 }
 
+function buildServer(): McpServer {
 const server = new McpServer({ name: "vscode-tools", version: "0.1.0" });
 
 server.registerTool(
@@ -160,4 +168,60 @@ server.registerTool(
   },
 );
 
-void server.connect(new StdioServerTransport());
+return server;
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(chunk as Buffer);
+  }
+  if (chunks.length === 0) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+async function main(): Promise<void> {
+  const httpIdx = process.argv.indexOf("--http");
+  if (httpIdx === -1) {
+    await buildServer().connect(new StdioServerTransport());
+    return;
+  }
+  const port = Number(process.argv[httpIdx + 1] ?? 8791);
+  // Stateless mode (no session ids): a fresh server+transport per request.
+  const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+    void (async () => {
+      const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      if (url.pathname !== "/mcp") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      const server = buildServer();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
+      await server.connect(transport);
+      const body = req.method === "POST" ? await readJsonBody(req) : undefined;
+      await transport.handleRequest(req, res, body);
+    })().catch(() => {
+      if (!res.headersSent) {
+        res.writeHead(500);
+      }
+      res.end();
+    });
+  });
+  httpServer.listen(port, () => {
+    // eslint-disable-next-line no-console
+    console.error(`vscode-tools MCP server listening on http://localhost:${port}/mcp`);
+  });
+}
+
+void main();
