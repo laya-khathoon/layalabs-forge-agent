@@ -78,6 +78,11 @@
           "default": "",
           "description": "Optional second model used automatically when the primary fails (e.g. ollama/llama3.2). Leave empty to disable."
         },
+        "forge.mcpServerUrl": {
+          "type": "string",
+          "default": "http://localhost:8791/mcp",
+          "description": "URL of the vscode-tools MCP server (streamable HTTP), used by the manual tool-call fallback for small models."
+        },
         "forge.mcpServerName": {
           "type": "string",
           "default": "vscode-tools",
