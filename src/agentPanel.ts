@@ -17,6 +17,25 @@ const TOOL_NAMES = ["read_file", "search_workspace", "propose_write", "run_comma
 const NEEDS_APPROVAL = new Set(["propose_write", "run_command"]);
 const MAX_TOOL_HOPS = 8;
 
+/** Pull plain text out of a streamed event payload (string, parts array, or nested object). */
+function asText(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const parts = value.map(asText).filter((p): p is string => typeof p === "string" && p.length > 0);
+    return parts.length > 0 ? parts.join("") : undefined;
+  }
+  if (typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return asText(o.text) ?? asText(o.content) ?? asText(o.parts) ?? asText(o.output);
+  }
+  return undefined;
+}
+
 interface TextToolCall {
   name: string;
   args: Record<string, unknown>;
@@ -159,7 +178,10 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           if (ev.type === "model.message.delta") {
             textOut += ev.content ?? "";
           }
-          if (ev.type === "tool.response" || ev.type === "tool.approval_required") {
+          if (ev.type === "model.message") {
+            textOut += asText(ev.content) ?? asText(ev.state?.output) ?? "";
+          }
+          if (ev.type === "tool.response" || ev.type === "tool.approval_required" || ev.type === "tool.call") {
             realToolActivity = true;
           }
           this.renderEvent(ev);
@@ -273,6 +295,18 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       case "model.message.delta":
         this.post({ type: "delta", id: ev.id, text: ev.content ?? "" });
         break;
+      case "model.message": {
+        const text = asText(ev.content) ?? asText(ev.state?.output);
+        if (text) {
+          this.post({ type: "delta", id: ev.id, text });
+        }
+        break;
+      }
+      case "tool.call":
+        for (const tc of ev.toolCalls ?? []) {
+          this.post({ type: "status", text: `Tool call: ${tc.id}` });
+        }
+        break;
       case "tool.response": {
         const body = typeof ev.content === "string" ? ev.content : JSON.stringify(ev.content ?? "");
         this.post({ type: "tool", text: body.slice(0, 2000) });
@@ -297,8 +331,8 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       default:
         // Surface failures instead of going silent (turn.failed, error, ...).
         if (ev.type !== "turn.created" && ev.type !== "session.created") {
-          const reason = typeof ev.content === "string" && ev.content ? `: ${ev.content.slice(0, 300)}` : "";
-          this.post({ type: "status", text: `Event ${ev.type}${reason}` });
+          const reason = asText(ev.content) ?? JSON.stringify(ev).slice(0, 300);
+          this.post({ type: "status", text: `Event ${ev.type}${reason ? `: ${reason}` : ""}` });
         }
         break;
     }
@@ -323,7 +357,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
 </style>
 </head>
 <body>
-  <div class="status">Forge panel build 2026-11-18d</div>
+  <div class="status">Forge panel build 2026-11-18e</div>
   <div id="log"></div>
   <div id="inputRow">
     <input id="input" placeholder="Ask the agent... (@file to mention)" />
