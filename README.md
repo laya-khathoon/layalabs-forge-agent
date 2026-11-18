@@ -25,7 +25,7 @@ VS Code extension (this repo)                TrueForge local server (npx @truefo
 │ Agent panel (webview chat)    │  session   │  Agent loop: model calls, tool     │
 │ Inline edit (Ctrl+I)          │ ─────────► │  loop, approvals, streaming        │
 │ Diff review + undo            │  HTTP/SSE  │           │                        │
-│ Context assembly (budgeted)   │            │           ▼ stdio (MCP)            │
+│ Context assembly (budgeted)   │            │      ▼ streamable HTTP (MCP)       │
 │                               │ ◄───────── │  vscode-tools MCP server           │
 │                               │  tool call │  (read_file, search_workspace,     │
 │                               │            │   propose_write, run_command)      │
@@ -37,7 +37,7 @@ VS Code extension (this repo)                TrueForge local server (npx @truefo
   events (`model.message.delta`, `tool.response`, `tool.approval_required`,
   `turn.done`) in the editor.
 - The editor's capabilities are exposed to the agent as **MCP tools**
-  (`src/mcpServer.ts`), spawned by TrueForge over stdio. The agent, not the
+  (`src/mcpServer.ts`), served over streamable HTTP. The agent, not the
   extension, decides what to read and change.
 - `propose_write` **never writes to disk**. It returns a unified diff;
   TrueForge pauses for tool approval, and the user then reviews the diff
@@ -72,12 +72,18 @@ with pytest.
    its OpenAI-compatible endpoint. See `config/models.example.json` for an
    example. API keys go in TrueForge's settings, never in this repo.
 
-3. **Register the editor tools connector** (Settings -> Connectors), a
-   stdio MCP server named `vscode-tools`:
+3. **Start the editor tools server** (separate terminal, leave it running):
 
-   - command: `node`
-   - args: `<absolute path to this repo>/out/mcpServer.js`
-   - env: `FORGE_WORKSPACE_ROOT=<absolute path to the repo you are editing>`
+   ```sh
+   # PowerShell: $env:FORGE_WORKSPACE_ROOT="<absolute path to the repo you are editing>"
+   # bash:       export FORGE_WORKSPACE_ROOT=<absolute path to the repo you are editing>
+   node out/mcpServer.js --http 8791
+   ```
+
+   Then register it in the TrueForge UI (Settings -> Connectors -> Add MCP
+   Server): name `vscode-tools`, URL `http://localhost:8791/mcp`, auth None.
+   (Plain `node out/mcpServer.js` keeps a stdio mode for harnesses that
+   spawn MCP processes directly.)
 
 4. **Build the extension:**
 
