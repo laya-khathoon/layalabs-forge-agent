@@ -135,6 +135,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private async runTurn(userText: string): Promise<void> {
+    this.post({ type: "user", text: userText });
     try {
       const ctx = await buildContext(userText, this.getBudgetTokens());
       if (ctx.chosen.length > 0) {
@@ -294,6 +295,11 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         this.post({ type: "status", text: "Turn finished." });
         break;
       default:
+        // Surface failures instead of going silent (turn.failed, error, ...).
+        if (ev.type !== "turn.created" && ev.type !== "session.created") {
+          const reason = typeof ev.content === "string" && ev.content ? `: ${ev.content.slice(0, 300)}` : "";
+          this.post({ type: "status", text: `Event ${ev.type}${reason}` });
+        }
         break;
     }
   }
@@ -317,7 +323,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
 </style>
 </head>
 <body>
-  <div class="status">Forge panel build 2026-11-18c</div>
+  <div class="status">Forge panel build 2026-11-18d</div>
   <div id="log"></div>
   <div id="inputRow">
     <input id="input" placeholder="Ask the agent... (@file to mention)" />
