@@ -133,6 +133,8 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       }
       let nextInput = ctx.text + `Instruction: ${userText}`;
       const client = this.getClient();
+      let lastCallKey = "";
+      let repeated = false;
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
         let textOut = "";
         let realToolActivity = false;
@@ -153,6 +155,12 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         if (!call) {
           break;
         }
+        const callKey = JSON.stringify(call);
+        if (callKey === lastCallKey) {
+          repeated = true;
+          break;
+        }
+        lastCallKey = callKey;
         if (NEEDS_APPROVAL.has(call.name)) {
           this.post({ type: "status", text: `Approval needed for tool call ${call.name} (manual fallback)` });
           const allow = await new Promise<boolean>((resolve) => {
@@ -182,7 +190,17 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         }
         nextInput =
           `The tool ${call.name} was executed and returned:\n${result}\n` +
-          `Continue the original task. Call the next tool by name, or give the final answer if done.`;
+          `Now answer the original task in plain words using this result. ` +
+          `Do NOT write more tool JSON unless a different tool is truly needed. ` +
+          `Original task: ${userText}`;
+      }
+      if (repeated) {
+        this.post({
+          type: "status",
+          text:
+            "The model kept repeating the same tool call instead of answering, so I stopped it. " +
+            "The tool output above has the information - if no plain answer appears, try the New button and ask again.",
+        });
       }
       this.post({ type: "status", text: "Done." });
     } catch (err) {
