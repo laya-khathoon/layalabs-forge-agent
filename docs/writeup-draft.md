@@ -26,17 +26,18 @@ an inline agent spec and streams turns through the TrueForge TypeScript SDK
 `turn.done`) are rendered live in the editor panel.
 
 The editor's capabilities are exposed to the agent as an **MCP server over
-stdio** (`src/mcpServer.ts`, registered in TrueForge as connector
-`vscode-tools`): `read_file`, `search_workspace`, `propose_write`,
+streamable HTTP** (`src/mcpServer.ts`, registered in TrueForge as connector
+`vscode-tools`; a stdio mode is kept for harnesses that spawn MCP processes
+directly): `read_file`, `search_workspace`, `propose_write` and
 `run_command`. The agent, not the extension, decides what to read and
-change. `propose_write` **never writes to disk**: it returns a unified
-diff; TrueForge pauses for tool approval, and the user then reviews the
-diff hunk by hunk in VS Code's native diff view. Every applied change can
-be reverted with `Forge: Undo Last Applied Change`. Harness features used:
-**sessions and turns** with streaming and cancellation, **MCP tools with
-human approval** driving the diff review, and **deferred tool loading**
-(tools load on demand rather than eagerly into context). TrueForge runs in
-**local mode** (`npx @truefoundry/trueforge@latest`); nothing is deployed.
+change. `propose_write` never touches disk: it returns a unified diff, the
+tool is on the approval list (`require_approval_for_tools`), and the user
+reviews the diff hunk by hunk in VS Code's native diff view before anything
+is applied. Harness features used: **sessions and turns** with streaming
+and cancellation, **MCP tools with human approval** driving the diff
+review, and **deferred tool loading** (tools load on demand rather than
+eagerly into context). TrueForge runs in **local mode**
+(`npx @truefoundry/trueforge@latest`); nothing is deployed.
 
 ## 4. How context is selected
 
