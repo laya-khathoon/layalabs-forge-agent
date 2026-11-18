@@ -170,6 +170,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       let repeated = false;
       let toolRuns = 0;
       let retriedEmpty = false;
+      let lastTextOut = "";
       const seenCalls = new Set<string>();
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
         let textOut = "";
@@ -186,6 +187,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           }
           this.renderEvent(ev);
         }
+        lastTextOut = textOut;
         if (realToolActivity) {
           break;
         }
@@ -250,6 +252,14 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           `Now answer the original task in one or two plain sentences using this result. ` +
           `Do NOT write any more JSON or tool calls - answer in plain words only. ` +
           `Original task: ${userText}`;
+      }
+      if (toolRuns === 0 && !repeated && lastTextOut.trim() === "") {
+        this.post({
+          type: "status",
+          text:
+            "The turn ended with no model output. The model may still be warming up or the request failed " +
+            "server-side - check the session in the TrueForge UI, or press New and try again.",
+        });
       }
       if (repeated) {
         this.post({
@@ -357,7 +367,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
 </style>
 </head>
 <body>
-  <div class="status">Forge panel build 2026-11-18e</div>
+  <div class="status">Forge panel build 2026-11-18f</div>
   <div id="log"></div>
   <div id="inputRow">
     <input id="input" placeholder="Ask the agent... (@file to mention)" />
