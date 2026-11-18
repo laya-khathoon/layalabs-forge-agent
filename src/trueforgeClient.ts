@@ -1,4 +1,16 @@
-import { TrueForge } from "@truefoundry/trueforge-sdk";
+/**
+ * Thin wrapper around the TrueForge TypeScript SDK.
+ * The extension never calls a model provider directly: it creates sessions
+ * and sends turns through the local TrueForge server, and renders the
+ * streamed events in the editor.
+ *
+ * The SDK is ESM-first: its CommonJS entry is broken in 0.185.x
+ * (`require("@truefoundry/trueforge-sdk")` fails with MODULE_NOT_FOUND).
+ * This extension compiles to CommonJS, so the SDK is loaded with a real
+ * dynamic import() the first time it is needed instead of a top-level
+ * require. (A plain `import()` would be rewritten to require() by the
+ * commonjs module target, hence the Function indirection.)
+ */
 
 /** A single event from the TrueForge turn stream (kept loose on purpose; see turn events reference). */
 export interface StreamedEvent {
@@ -18,19 +30,46 @@ export interface AgentSpecOptions {
   mcpServerName: string;
 }
 
-/**
- * Thin wrapper around the TrueForge TypeScript SDK.
- * The extension never calls a model provider directly: it creates sessions
- * and sends turns through the local TrueForge server, and renders the
- * streamed events in the editor.
- */
+/** The slice of the SDK client this wrapper uses. */
+interface TrueForgeClientLike {
+  sessions: {
+    create(options: unknown): Promise<{ data: { id: string } }>;
+    createTurnStream(
+      sessionId: string,
+      options: unknown,
+    ): Promise<{ withMetadata(): AsyncIterable<{ data: unknown }> }>;
+    createTurnEvents(sessionId: string, turnId: string, options: unknown): Promise<unknown>;
+    cancel(sessionId: string): Promise<unknown>;
+  };
+}
+
+type TrueForgeCtor = new (options: { baseUrl: string; timeoutInSeconds: number }) => TrueForgeClientLike;
+
+let sdkPromise: Promise<TrueForgeCtor> | undefined;
+
+function loadSdk(): Promise<TrueForgeCtor> {
+  if (!sdkPromise) {
+    const dynamicImport = new Function("specifier", "return import(specifier)") as (
+      specifier: string,
+    ) => Promise<{ TrueForge: TrueForgeCtor }>;
+    sdkPromise = dynamicImport("@truefoundry/trueforge-sdk").then((m) => m.TrueForge);
+  }
+  return sdkPromise;
+}
+
 export class ForgeClient {
-  private client: TrueForge;
+  private client?: TrueForgeClientLike;
   private sessionId?: string;
   private currentTurnId?: string;
 
-  constructor(private readonly baseUrl: string, private readonly spec: AgentSpecOptions) {
-    this.client = new TrueForge({ baseUrl, timeoutInSeconds: 600 });
+  constructor(private readonly baseUrl: string, private readonly spec: AgentSpecOptions) {}
+
+  private async ensureClient(): Promise<TrueForgeClientLike> {
+    if (!this.client) {
+      const TrueForge = await loadSdk();
+      this.client = new TrueForge({ baseUrl: this.baseUrl, timeoutInSeconds: 600 });
+    }
+    return this.client;
   }
 
   /** Open a session with an inline agent spec (no saved agent needed). */
@@ -38,7 +77,8 @@ export class ForgeClient {
     if (this.sessionId) {
       return this.sessionId;
     }
-    const { data: session } = await this.client.sessions.create({
+    const client = await this.ensureClient();
+    const { data: session } = await client.sessions.create({
       agent: {
         spec: {
           model: { name: this.spec.model },
@@ -62,7 +102,8 @@ export class ForgeClient {
   /** Stream one turn. Yields every event, including model.message.delta chunks. */
   async *streamTurn(content: string): AsyncGenerator<StreamedEvent> {
     const sessionId = await this.ensureSession();
-    const stream = await this.client.sessions.createTurnStream(sessionId, {
+    const client = await this.ensureClient();
+    const stream = await client.sessions.createTurnStream(sessionId, {
       input: [{ type: "user.message", content }],
     });
     for await (const { data: event } of stream.withMetadata()) {
@@ -79,7 +120,8 @@ export class ForgeClient {
     if (!this.sessionId || !this.currentTurnId) {
       return;
     }
-    await this.client.sessions.createTurnEvents(this.sessionId, this.currentTurnId, {
+    const client = await this.ensureClient();
+    await client.sessions.createTurnEvents(this.sessionId, this.currentTurnId, {
       events: [
         {
           type: "user.tool_approval",
@@ -93,7 +135,7 @@ export class ForgeClient {
 
   /** Cancel the running turn. A cancelled run leaves the workspace untouched. */
   async cancel(): Promise<void> {
-    if (!this.sessionId) {
+    if (!this.sessionId || !this.client) {
       return;
     }
     try {
