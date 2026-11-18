@@ -43,11 +43,25 @@ export function extractTextToolCall(text: string): TextToolCall | undefined {
   if (!name || !TOOL_NAMES.includes(name)) {
     return undefined;
   }
-  let args: Record<string, unknown> = {};
-  const params = (o.parameters ?? o.arguments) as Record<string, unknown> | undefined;
-  if (params && typeof params === "object") {
-    const inner = (params.input ?? params.arguments) as Record<string, unknown> | undefined;
-    args = { ...params, ...(inner && typeof inner === "object" ? inner : {}) };
+  const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  const params = o.parameters ?? o.arguments;
+  const paramsRec = asRecord(params);
+  const innerVal = paramsRec ? (paramsRec.input ?? paramsRec.arguments) : undefined;
+  // Small models sometimes send the payload as a bare string: map it to the
+  // tool's main argument (path / query / command).
+  const stringPayload =
+    typeof params === "string" ? params : typeof innerVal === "string" ? innerVal : undefined;
+  let args: Record<string, unknown>;
+  if (stringPayload !== undefined) {
+    const key = name === "search_workspace" ? "query" : name === "run_command" ? "command" : "path";
+    args = { ...(paramsRec ?? {}), [key]: stringPayload };
+    delete args.input;
+    delete args.arguments;
+    delete args.mcp_server;
+  } else {
+    const innerRec = asRecord(innerVal);
+    args = { ...(paramsRec ?? {}), ...(innerRec ?? {}) };
     delete args.input;
     delete args.arguments;
     delete args.mcp_server;
@@ -133,10 +147,10 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       }
       let nextInput = ctx.text + `Instruction: ${userText}`;
       const client = this.getClient();
-      let lastCallKey = "";
       let repeated = false;
       let toolRuns = 0;
       let retriedEmpty = false;
+      const seenCalls = new Set<string>();
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
         let textOut = "";
         let realToolActivity = false;
@@ -175,11 +189,11 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           break;
         }
         const callKey = JSON.stringify(call);
-        if (callKey === lastCallKey) {
+        if (seenCalls.has(callKey)) {
           repeated = true;
           break;
         }
-        lastCallKey = callKey;
+        seenCalls.add(callKey);
         toolRuns++;
         if (NEEDS_APPROVAL.has(call.name)) {
           this.post({ type: "status", text: `Approval needed for tool call ${call.name} (manual fallback)` });
@@ -210,16 +224,16 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         }
         nextInput =
           `The tool ${call.name} was executed and returned:\n${result}\n` +
-          `Now answer the original task in plain words using this result. ` +
-          `Do NOT write more tool JSON unless a different tool is truly needed. ` +
+          `Now answer the original task in one or two plain sentences using this result. ` +
+          `Do NOT write any more JSON or tool calls - answer in plain words only. ` +
           `Original task: ${userText}`;
       }
       if (repeated) {
         this.post({
           type: "status",
           text:
-            "The model kept repeating the same tool call instead of answering, so I stopped it. " +
-            "The tool output above has the information - if no plain answer appears, try the New button and ask again.",
+            "The model kept repeating a tool call instead of answering, so I stopped it. " +
+            "The tool output above has the information - press New and ask again if you want it phrased.",
         });
       }
       this.post({ type: "status", text: "Done." });
