@@ -135,6 +135,8 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
       const client = this.getClient();
       let lastCallKey = "";
       let repeated = false;
+      let toolRuns = 0;
+      let retriedEmpty = false;
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
         let textOut = "";
         let realToolActivity = false;
@@ -153,6 +155,23 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
         // Weak-model fallback: the model printed its tool call as JSON text.
         const call = extractTextToolCall(textOut);
         if (!call) {
+          // After a tool result, a 3B model may answer with nothing at all.
+          if (toolRuns > 0 && textOut.trim() === "") {
+            if (!retriedEmpty) {
+              retriedEmpty = true;
+              this.post({ type: "status", text: "The model returned nothing; asking again for a plain answer..." });
+              nextInput =
+                `Answer the original task in one or two plain sentences using the tool result above. ` +
+                `Do not write any JSON or tool call. Original task: ${userText}`;
+              continue;
+            }
+            this.post({
+              type: "status",
+              text:
+                "The model returned no answer. The tool output above has the result - " +
+                "press New and ask again if you want it phrased.",
+            });
+          }
           break;
         }
         const callKey = JSON.stringify(call);
@@ -161,6 +180,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
           break;
         }
         lastCallKey = callKey;
+        toolRuns++;
         if (NEEDS_APPROVAL.has(call.name)) {
           this.post({ type: "status", text: `Approval needed for tool call ${call.name} (manual fallback)` });
           const allow = await new Promise<boolean>((resolve) => {
@@ -283,6 +303,7 @@ export class AgentPanelProvider implements vscode.WebviewViewProvider {
 </style>
 </head>
 <body>
+  <div class="status">Forge panel build 2026-11-18c</div>
   <div id="log"></div>
   <div id="inputRow">
     <input id="input" placeholder="Ask the agent... (@file to mention)" />
