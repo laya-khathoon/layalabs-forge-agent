@@ -7,7 +7,10 @@ import { reconstructFromUnified } from "./simpleDiff";
 
 const INSTRUCTIONS = [
   "You are a careful coding agent running inside VS Code via TrueForge.",
-  "Use the vscode-tools MCP tools to read files, search the workspace, propose writes and run commands.",
+  "The vscode-tools MCP server gives you exactly these tools: read_file, search_workspace, propose_write, run_command.",
+  "Call tools by these exact names only. Never invent tool names - the connector name and its description are not tools.",
+  "To see any file you MUST call read_file first. To find files, call search_workspace.",
+  "Never guess or make up file contents, project names or facts. If a tool call fails, say exactly what failed and stop - do not answer from imagination.",
   "NEVER write to disk yourself: always propose changes with propose_write so the user can review hunks.",
   "When a task spans several files, find the files yourself with search_workspace before reading them.",
   "Explain briefly which files you chose and why.",
