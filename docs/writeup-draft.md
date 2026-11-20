@@ -34,10 +34,19 @@ change. `propose_write` never touches disk: it returns a unified diff, the
 tool is on the approval list (`require_approval_for_tools`), and the user
 reviews the diff hunk by hunk in VS Code's native diff view before anything
 is applied. Harness features used: **sessions and turns** with streaming
-and cancellation, **MCP tools with human approval** driving the diff
-review, and **deferred tool loading** (tools load on demand rather than
-eagerly into context). TrueForge runs in **local mode**
+and cancellation, and **MCP tools with human approval** driving the diff
+review. TrueForge runs in **local mode**
 (`npx @truefoundry/trueforge@latest`); nothing is deployed.
+
+**Resilience.** Small/local models sometimes print a tool call as plain
+JSON text instead of making a real tool call. The panel detects that shape
+(normalizing argument aliases), executes the call against the MCP server,
+and feeds the result back into the turn - with the same approval gate for
+writes - so weak models still complete the tool loop. Repeated identical
+calls and empty answers are detected and surfaced as clear messages instead
+of silent failure. If the primary model fails outright and
+`forge.fallbackModel` is set, the request is retried once on the fallback
+with a fresh session.
 
 ## 4. How context is selected
 
@@ -60,11 +69,13 @@ never concatenated blindly.
 The extension never calls a model provider directly; models are configured
 in TrueForge (catalog provider or any OpenAI-compatible endpoint).
 
-- Primary: `google/gemini-2.5-flash` on Google's **free tier** (Google AI
-  Studio key, billing off) - cost: **$0**.
-- Fallback (Task C): `ollama/llama3.2` running locally - cost: **$0**.
+- Primary: `google-gemini/gemini-flash-latest` on Google's **free tier**
+  (Google AI Studio key, billing off) - cost: **$0**.
+- Fallback (Task C): `local-ollama/llama-3-2-3b` running locally - cost:
+  **$0**.
 - Switching models: change `forge.model` / `forge.fallbackModel` in VS Code
-  settings; any model configured in TrueForge works.
+  settings; any model configured in TrueForge works. The API key lives only
+  in TrueForge's settings, never in the repo or the editor.
 
 See `config/models.example.json`.
 
@@ -78,7 +89,7 @@ See `config/models.example.json`.
 | B1 Context assembly | [mm:ss] | Budgeted retrieval, chosen files shown with reasons |
 | B2 Diff safety | [mm:ss] | Per-hunk review + working undo shown on screen |
 | B3 Resilience | [mm:ss] | Clear error / fallback model, `git status` clean |
-| B4 TrueForge depth | [mm:ss] | MCP tools + approval-driven review + deferred tool loading |
+| B4 TrueForge depth | [mm:ss] | MCP tools + approval-driven review + streamed turn events |
 
 ## 7. Tools used
 
@@ -100,5 +111,6 @@ See `config/models.example.json`.
 - Tool approval is per call; a session-level approval policy
   (`user.tool_approval_policy`) would cut repetitive prompts.
 - With another month: subagents for exploration, a skill pack for Flask's
-  conventions, and streamed inline edits (ghost text) instead of
-  whole-file proposals.
+  conventions, streamed inline edits (ghost text) instead of whole-file
+  proposals, and deferred tool loading so large tool catalogs stay out of
+  context until needed.
