@@ -69,7 +69,7 @@ never concatenated blindly.
 The extension never calls a model provider directly; models are configured
 in TrueForge (catalog provider or any OpenAI-compatible endpoint).
 
-- Primary: `google-gemini/gemini-flash-latest` on Google's **free tier**
+- Primary: `google-gemini/gemini-flash-lite-latest` on Google's **free tier**
   (Google AI Studio key, billing off) - cost: **$0**.
 - Fallback (Task C): `local-ollama/llama-3-2-3b` running locally - cost:
   **$0**.
