@@ -110,5 +110,12 @@
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/laya-khathoon/layalabs-forge-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/laya-khathoon/layalabs-forge-agent/issues"
   }
 }
