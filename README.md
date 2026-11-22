@@ -9,6 +9,12 @@ Given a real repository, the agent reads the code, plans a change, edits
 several files, and presents every edit for review inside the editor. Nothing
 is written to disk silently.
 
+## Competition status
+
+Round 1 was submitted on 20 November 2026 with the write-up
+(`docs/writeup-draft.md`, exported as `forge-writeup.pdf`) and a demo video.
+Shortlist results are expected on 30 November 2026.
+
 ## Starting point
 
 **From scratch.** No fork. The extension is written for this competition; the
