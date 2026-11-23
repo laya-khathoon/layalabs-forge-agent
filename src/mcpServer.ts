@@ -28,8 +28,24 @@ const MAX_OUTPUT_CHARS = 8000;
 
 function safePath(relPath: string): string {
   const abs = path.resolve(WORKSPACE_ROOT, relPath);
-  if (!abs.startsWith(WORKSPACE_ROOT)) {
+  const relative = path.relative(WORKSPACE_ROOT, abs);
+  if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
     throw new Error(`Path escapes the workspace: ${relPath}`);
+  }
+  // Resolve the nearest existing parent too, so a symlink cannot escape.
+  let existing = abs;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) { throw new Error("No existing workspace parent"); }
+    existing = parent;
+  }
+  const physicalRoot = fs.realpathSync(WORKSPACE_ROOT);
+  const physicalRelative = path.relative(physicalRoot, fs.realpathSync(existing));
+  if (path.isAbsolute(physicalRelative) || physicalRelative === ".." || physicalRelative.startsWith(`..${path.sep}`)) {
+    throw new Error("Symlink escapes the workspace");
+  }
+  if (relative.split(path.sep).some(part => part === ".git" || part === ".env" || part.startsWith(".env."))) {
+    throw new Error("Private configuration files cannot be read through tools");
   }
   return abs;
 }
@@ -73,10 +89,10 @@ server.registerTool(
     annotations: { readOnlyHint: true },
   },
   async ({ query, max_results }) => {
-    const max = max_results ?? 40;
+    const max = Math.max(1, Math.min(100, Math.floor(max_results ?? 40)));
     let out: string;
     try {
-      out = execFileSync("rg", ["--line-number", "--no-heading", "--max-count", String(max), query, WORKSPACE_ROOT], {
+      out = execFileSync("rg", ["--line-number", "--no-heading", "--max-count", String(max), "--glob", "!.env*", "--", query, WORKSPACE_ROOT], {
         encoding: "utf8",
         maxBuffer: 1024 * 1024,
       });
@@ -89,7 +105,7 @@ server.registerTool(
           if (hits.length >= max) {
             return;
           }
-          if (entry.name.startsWith(".") || entry.name === "node_modules") {
+          if (entry.isSymbolicLink() || entry.name.startsWith(".") || entry.name === "node_modules") {
             continue;
           }
           const full = path.join(dir, entry.name);
@@ -149,6 +165,9 @@ server.registerTool(
     annotations: { destructiveHint: true },
   },
   async ({ command }) => {
+    if (process.env.FORGE_ALLOW_COMMANDS !== "1") {
+      return textResult("Shell commands are disabled. Start with FORGE_ALLOW_COMMANDS=1 only for a trusted local client, and approve commands in the editor.");
+    }
     try {
       const out = execSync(command, {
         cwd: WORKSPACE_ROOT,
@@ -175,6 +194,9 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(chunk as Buffer);
+    if (chunks.reduce((size, part) => size + part.length, 0) > 1024 * 1024) {
+      throw new Error("Request body exceeds 1 MiB");
+    }
   }
   if (chunks.length === 0) {
     return undefined;
@@ -196,6 +218,14 @@ async function main(): Promise<void> {
   // Stateless mode (no session ids): a fresh server+transport per request.
   const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
+      // This server can read local files. Never expose it to the LAN or
+      // allow a browser page to use DNS rebinding / cross-origin requests.
+      const allowedHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
+      if (!allowedHosts.has(req.headers.host ?? "") || req.headers.origin) {
+        res.writeHead(403);
+        res.end("Local server-to-server requests only");
+        return;
+      }
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
       if (url.pathname !== "/mcp") {
         res.writeHead(404);
@@ -218,7 +248,7 @@ async function main(): Promise<void> {
       res.end();
     });
   });
-  httpServer.listen(port, () => {
+  httpServer.listen(port, "127.0.0.1", () => {
     // eslint-disable-next-line no-console
     console.error(`vscode-tools MCP server listening on http://localhost:${port}/mcp`);
   });
