@@ -44,7 +44,7 @@ function safePath(relPath: string): string {
   if (path.isAbsolute(physicalRelative) || physicalRelative === ".." || physicalRelative.startsWith(`..${path.sep}`)) {
     throw new Error("Symlink escapes the workspace");
   }
-  if (relative.split(path.sep).some(part => part === ".git" || part === ".env" || part.startsWith(".env."))) {
+  if ([relative, physicalRelative].some(value => value.split(path.sep).some(part => part === ".git" || part === ".env" || part.startsWith(".env.")))) {
     throw new Error("Private configuration files cannot be read through tools");
   }
   return abs;
