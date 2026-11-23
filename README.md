@@ -150,3 +150,21 @@ Repository: `pallets/flask` at tag `3.1.3` (`git checkout 3.1.3`).
 ## License
 
 MIT - see `LICENSE`.
+
+
+## Local tool server safety
+
+The HTTP MCP tool server listens on `127.0.0.1` only. Keep it local: do not
+forward its port or expose it through a tunnel. Browser-origin requests and
+unrecognized Host headers are refused. File reads and proposals stay inside
+the workspace, including when symlinks are present. `.env` and `.git` paths
+are refused. Search does not include hidden environment files.
+
+Shell commands are disabled by default. If a trusted local client needs them,
+explicitly set `FORGE_ALLOW_COMMANDS=1` in the server's environment before
+starting it. Commands are not sandboxed and have the user's filesystem access.
+Keep the editor's per-command approval enabled. Do not enable this setting for
+an untrusted MCP client. A local program running as the same user is still
+trusted by this server; these checks are not multi-user authentication.
+
+Run `npm run compile && node security-check.cjs` for the local safety checks.
